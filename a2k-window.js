@@ -1,25 +1,37 @@
 import { html, css, LitElement } from "lit";
-import { property } from "lit/decorators.js";
 import { styleMap } from "lit/directives/style-map.js";
 import { DragController } from "./dragController";
 
-// import "@a2000/panel/a2k-panel.js";
-
-export class A2kWindow extends LitElement {
+class A2kWindow extends LitElement {
   static styles = css`
     :host {
       font-family: var(--font-primary);
     }
 
     #window {
-      position: absolute;
-      width: 80ch;
-      max-width: 100%;
+      width: min(80ch, 100%);
+    }
+
+    #panel {
+      border: var(--border-width) solid var(--color-gray-400);
+      box-shadow: 2px 2px var(--color-black);
+      background-color: var(--color-gray-500);
     }
 
     #draggable {
-      width: 100%;
-      position: relative;
+      background: linear-gradient(
+        90deg,
+        var(--color-blue-100) 0%,
+        var(--color-blue-700) 100%
+      );
+      user-select: none;
+    }
+
+    #draggable p {
+      font-weight: bold;
+      margin: 0;
+      color: white;
+      padding: 2px 8px;
     }
 
     [data-dragging="idle"] {
@@ -31,19 +43,29 @@ export class A2kWindow extends LitElement {
     }
   `;
 
+  static properties = {
+    heading: {},
+  };
+
   drag = new DragController(this, {
     containerId: "#window",
   });
 
+  constructor() {
+    super();
+
+    this.heading = "Building Retro Web Components with Lit";
+  }
+
   render() {
     return html`
       <div id="window" style=${styleMap(this.drag.styles)}>
-        <a2k-panel>
+        <div id="panel">
           <div id="draggable" ${this.drag.applyDrag()}>
             <p>${this.heading}</p>
           </div>
           <slot></slot>
-        </a2k-panel>
+        </div>
       </div>
     `;
   }

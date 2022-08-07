@@ -2,24 +2,14 @@ import { noChange } from "lit";
 import { Directive, directive, PartType } from "lit/directive.js";
 import PointerTracker from "pointer-tracker";
 
-const getSmallestValue = (a, b) => (a <= b ? a : b);
-
 class DragDirective extends Directive {
   hasInitialised = false;
 
-  constructor(partInfo) {
-    super(partInfo);
-
-    if (partInfo.type !== PartType.ELEMENT) {
-      throw new Error("The `drag` directive must be used on an element");
-    }
-  }
-
-  update(part, renderArgs) {
+  update(part, args) {
     if (this.hasInitialised) return;
 
     const draggableElement = part.element;
-    const [dragController, pointerTrackerOptions] = renderArgs;
+    const [dragController, pointerTrackerOptions] = args;
 
     draggableElement.setAttribute("data-dragging", "idle");
     dragController.draggableElement = draggableElement;
@@ -34,7 +24,6 @@ class DragDirective extends Directive {
         pointerTrackerOptions.move(...args);
       },
       end(...args) {
-        pointerTrackerOptions.end(...args);
         draggableElement.setAttribute("data-dragging", "idle");
       },
     });
@@ -50,32 +39,17 @@ class DragDirective extends Directive {
 const dragDirective = directive(DragDirective);
 
 export class DragController {
-  host;
-
-  cursorPositionX = null;
-  cursorPositionY = null;
-  pointerTracker = null;
-  draggableElement = null;
-  containerElement = null;
-  containerId = "";
-
   styles = {
-    touchAction: "none",
+    position: "absolute",
     top: "0px",
     left: "0px",
   };
 
   constructor(host, options) {
+    const { containerId = "" } = options;
+
     this.host = host;
     this.host.addController(this);
-
-    const { initialPosition = {}, containerId = "" } = options;
-
-    this.styles = {
-      ...this.styles,
-      ...initialPosition,
-    };
-
     this.containerId = containerId;
   }
 
@@ -86,12 +60,9 @@ export class DragController {
   }
 
   applyDrag() {
-    if (!this.host.draggable) return null;
-
     return dragDirective(this, {
       start: this.#onDragStart,
       move: this.#onDrag,
-      end: this.#onDragEnd,
     });
   }
 
@@ -103,49 +74,60 @@ export class DragController {
     };
   }
 
-  handleWindowMove(pointer) {
+  calculateWindowPosition(pointer) {
     const el = this.draggableElement;
     const containerEl = this.host.shadowRoot?.querySelector(this.containerId);
 
     if (!el || !containerEl) return;
+
     const { top, left } = this.styles;
 
+    // These values exist as strings on the styles object, we need to parse them as numbers
     const parsedTop = Number(top?.replace("px", ""));
     const parsedLeft = Number(left?.replace("px", ""));
-    const pageX = Math.floor(pointer.pageX);
-    const pageY = Math.floor(pointer.pageY);
 
-    if (pageX !== this.cursorPositionX || pageY !== this.cursorPositionY) {
+    // JavaScript's floats can be weird, so we're flooring these to integers
+    const cursorPositionX = Math.floor(pointer.pageX);
+    const cursorPositionY = Math.floor(pointer.pageY);
+
+    const hasCursorMoved =
+      cursorPositionX !== this.cursorPositionX ||
+      cursorPositionY !== this.cursorPositionY;
+
+    // We only need to do calculate window position if the cursor position has changed
+    if (hasCursorMoved) {
       const { bottom, height } = el.getBoundingClientRect();
       const { right, width } = containerEl.getBoundingClientRect();
 
-      // window.inner* and screen.avail* had problems depending on where they're used
-      // doing this check ensures that the draggable box never extends beyond the screen
-      const availableWidth = getSmallestValue(screen.availWidth, innerWidth);
-      const availableHeight = getSmallestValue(screen.availHeight, innerHeight);
+      // The difference between the cursor's previous position and its current position
+      const xDelta = cursorPositionX - this.cursorPositionX;
+      const yDelta = cursorPositionY - this.cursorPositionY;
 
-      const xDelta = pageX - this.cursorPositionX;
-      const yDelta = pageY - this.cursorPositionY;
+      const { availWidth, availHeight } = screen;
+
       const outOfBoundsTop = parsedTop + yDelta < 0;
       const outOfBoundsLeft = parsedLeft + xDelta < 0;
-      const outOfBoundsBottom = bottom + yDelta > availableHeight;
-      const outOfBoundsRight = right + xDelta >= availableWidth;
+      const outOfBoundsBottom = bottom + yDelta > availHeight;
+      const outOfBoundsRight = right + xDelta >= availWidth;
+
       const isOutOfBounds =
         outOfBoundsBottom ||
         outOfBoundsLeft ||
         outOfBoundsRight ||
         outOfBoundsTop;
 
-      this.cursorPositionX = pageX;
-      this.cursorPositionY = pageY;
+      // Set the cursor positions for the next time this function is invoked
+      this.cursorPositionX = cursorPositionX;
+      this.cursorPositionY = cursorPositionY;
 
+      // The happy path, if the draggable element doesn't attempt to go beyond the browser's boundaries
       if (!isOutOfBounds) {
         const top = `${parsedTop + yDelta}px`;
         const left = `${parsedLeft + xDelta}px`;
 
         this.updateElPosition(left, top);
       } else {
-        // This logic is flawed, as a window can be out of bounds top + bottom at the same time
+        // Otherwise we force the window to remain within the browser window
         if (outOfBoundsTop) {
           const left = `${parsedLeft + xDelta}px`;
 
@@ -167,6 +149,7 @@ export class DragController {
         }
       }
 
+      // We trigger a lifecycle update
       this.host.requestUpdate();
     }
   }
@@ -174,36 +157,23 @@ export class DragController {
   #onDragStart = (pointer, ev) => {
     this.cursorPositionX = Math.floor(pointer.pageX);
     this.cursorPositionY = Math.floor(pointer.pageY);
-
-    const el = ev.target;
-    el.setAttribute("data-state", "dragging");
-
-    return true;
   };
 
-  #onDrag = (_previousPointers, pointers) => {
-    const [pointer] = pointers;
+  #onDrag = (_, pointers) => {
     const el = this.draggableElement;
     const containerEl = this.host.shadowRoot?.querySelector(this.containerId);
 
-    const event = new CustomEvent("window-drag", {
+    const event = new CustomEvent("windowDrag", {
       bubbles: true,
       composed: true,
       detail: {
-        pointer,
+        pointer: pointers[0],
         containerEl,
         draggableEl: el,
       },
     });
 
-    window.requestAnimationFrame(() => {
-      this.host.dispatchEvent(event);
-      return this.handleWindowMove(pointer);
-    });
-  };
-
-  #onDragEnd = (_pointer, ev) => {
-    const el = ev.target;
-    el.removeAttribute("data-state");
+    this.host.dispatchEvent(event);
+    this.calculateWindowPosition(pointers[0]);
   };
 }
