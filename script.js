@@ -5,8 +5,6 @@ function onWindowDrag(e) {
   const { containerEl } = e.detail;
   const { width, top, left, height } = containerEl.getBoundingClientRect();
 
-  console.log(width)
-
   const newEl = document.createElement("a2k-broken-window");
 
   newEl.setAttribute("width", width);

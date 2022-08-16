@@ -23,7 +23,7 @@ export class DragController {
 
     getDraggableEl().then((el) => {
       if (!el) return;
-      console.log(el);
+
       this.draggableEl = el;
       this.init();
     });
@@ -57,18 +57,15 @@ export class DragController {
     const el = this.draggableEl;
     const containerEl = this.getContainerEl();
 
-    console.log(el, containerEl);
-
     if (!el || !containerEl) return;
 
     const oldX = this.x;
     const oldY = this.y;
 
-    // JacaScript's floats can be weird, so we're flooring these to integers
+    // JavaScript's floats can be weird, so we're flooring these to integers
     const parsedTop = Math.floor(pointer.pageX);
     const parsedLeft = Math.floor(pointer.pageY);
 
-    // JavaScript's floats can be weird, so we're flooring these to integers
     const cursorPositionX = Math.floor(pointer.pageX);
     const cursorPositionY = Math.floor(pointer.pageY);
 
@@ -76,14 +73,10 @@ export class DragController {
       cursorPositionX !== this.cursorPositionX ||
       cursorPositionY !== this.cursorPositionY;
 
-    console.log("boooo", hasCursorMoved);
-
     // We only need to do calculate window position if the cursor position has changed
     if (hasCursorMoved) {
       const { bottom, height } = el.getBoundingClientRect();
       const { right, width } = containerEl.getBoundingClientRect();
-
-      console.log("allowqqwww?");
 
       // The difference between the cursor's previous position and its current position
       const xDelta = cursorPositionX - this.cursorPositionX;
@@ -107,8 +100,6 @@ export class DragController {
       // Set the cursor positions for the next time this function is invoked
       this.cursorPositionX = cursorPositionX;
       this.cursorPositionY = cursorPositionY;
-
-      // The happy path, if the draggable element doesn't attempt to go beyond the browser's boundaries
 
       // Otherwise we force the window to remain within the browser window
       if (outOfBoundsTop) {
