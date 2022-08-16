@@ -22,24 +22,20 @@ export class BrokenWindow extends LitElement {
     }
   `;
 
-  constructor() {
-    super();
-
-    this.height = "";
-    this.width = "";
-    this.top = "";
-    this.left = "";
-  }
-
   render() {
     return html`
       <div
-        style=${styleMap({ top: this.top, left: this.left })}
+        style=${styleMap({
+          transform: `translate(${this.left}px, ${this.top}px)`,
+        })}
         id="outer-container"
       >
         <div id="middle-container">
           <div
-            style=${styleMap({ width: this.width, height: this.height })}
+            style=${styleMap({
+              width: `${this.width}px`,
+              height: `${this.height}px`,
+            })}
           ></div>
         </div>
       </div>

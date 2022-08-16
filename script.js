@@ -3,7 +3,9 @@ import "./a2k-broken-window";
 
 function onWindowDrag(e) {
   const { containerEl } = e.detail;
-  const { width, top, left, height } = getComputedStyle(containerEl);
+  const { width, top, left, height } = containerEl.getBoundingClientRect();
+
+  console.log(width)
 
   const newEl = document.createElement("a2k-broken-window");
 
@@ -15,4 +17,4 @@ function onWindowDrag(e) {
   containerEl.insertAdjacentElement("beforebegin", newEl);
 }
 
-window.addEventListener("windowDrag", onWindowDrag);
+window.addEventListener("window-drag", onWindowDrag);

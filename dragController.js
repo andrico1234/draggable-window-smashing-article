@@ -1,44 +1,10 @@
-import { noChange } from "lit";
-import { Directive, directive, PartType } from "lit/directive.js";
 import PointerTracker from "pointer-tracker";
 
-class DragDirective extends Directive {
-  hasInitialised = false;
-
-  update(part, args) {
-    if (this.hasInitialised) return;
-
-    const draggableElement = part.element;
-    const [dragController, pointerTrackerOptions] = args;
-
-    draggableElement.setAttribute("data-dragging", "idle");
-    dragController.draggableElement = draggableElement;
-
-    dragController.pointerTracker = new PointerTracker(draggableElement, {
-      start(...args) {
-        pointerTrackerOptions.start(...args);
-        draggableElement.setAttribute("data-dragging", "dragging");
-        return true;
-      },
-      move(...args) {
-        pointerTrackerOptions.move(...args);
-      },
-      end(...args) {
-        draggableElement.setAttribute("data-dragging", "idle");
-      },
-    });
-
-    this.hasInitialised = true;
-  }
-
-  render() {
-    return noChange;
-  }
-}
-
-const dragDirective = directive(DragDirective);
-
 export class DragController {
+  x = 0;
+  y = 0;
+  state = "idle";
+
   styles = {
     position: "absolute",
     top: "0px",
@@ -46,11 +12,39 @@ export class DragController {
   };
 
   constructor(host, options) {
-    const { containerId = "" } = options;
+    const {
+      getContainerEl = () => null,
+      getDraggableEl = () => Promise.resolve(null),
+    } = options;
 
     this.host = host;
     this.host.addController(this);
-    this.containerId = containerId;
+    this.getContainerEl = getContainerEl;
+
+    getDraggableEl().then((el) => {
+      if (!el) return;
+      console.log(el);
+      this.draggableEl = el;
+      this.init();
+    });
+  }
+
+  init() {
+    this.pointerTracker = new PointerTracker(this.draggableEl, {
+      start: (...args) => {
+        this.#onDragStart(...args);
+        this.state = "dragging";
+        this.host.requestUpdate();
+        return true;
+      },
+      move: (...args) => {
+        this.#onDrag(...args);
+      },
+      end: (...args) => {
+        this.state = "idle";
+        this.host.requestUpdate();
+      },
+    });
   }
 
   hostDisconnected() {
@@ -59,32 +53,20 @@ export class DragController {
     }
   }
 
-  applyDrag() {
-    return dragDirective(this, {
-      start: this.#onDragStart,
-      move: this.#onDrag,
-    });
-  }
-
-  updateElPosition(x, y) {
-    this.styles = {
-      ...this.styles,
-      left: x,
-      top: y,
-    };
-  }
-
   calculateWindowPosition(pointer) {
-    const el = this.draggableElement;
-    const containerEl = this.host.shadowRoot?.querySelector(this.containerId);
+    const el = this.draggableEl;
+    const containerEl = this.getContainerEl();
+
+    console.log(el, containerEl);
 
     if (!el || !containerEl) return;
 
-    const { top, left } = this.styles;
+    const oldX = this.x;
+    const oldY = this.y;
 
-    // These values exist as strings on the styles object, we need to parse them as numbers
-    const parsedTop = Number(top?.replace("px", ""));
-    const parsedLeft = Number(left?.replace("px", ""));
+    // JacaScript's floats can be weird, so we're flooring these to integers
+    const parsedTop = Math.floor(pointer.pageX);
+    const parsedLeft = Math.floor(pointer.pageY);
 
     // JavaScript's floats can be weird, so we're flooring these to integers
     const cursorPositionX = Math.floor(pointer.pageX);
@@ -94,21 +76,27 @@ export class DragController {
       cursorPositionX !== this.cursorPositionX ||
       cursorPositionY !== this.cursorPositionY;
 
+    console.log("boooo", hasCursorMoved);
+
     // We only need to do calculate window position if the cursor position has changed
     if (hasCursorMoved) {
       const { bottom, height } = el.getBoundingClientRect();
       const { right, width } = containerEl.getBoundingClientRect();
 
+      console.log("allowqqwww?");
+
       // The difference between the cursor's previous position and its current position
       const xDelta = cursorPositionX - this.cursorPositionX;
       const yDelta = cursorPositionY - this.cursorPositionY;
 
-      const { availWidth, availHeight } = screen;
+      // The happy path - if the element doesn't attempt to go beyond the browser's boundaries
+      this.x = oldX + xDelta;
+      this.y = oldY + yDelta;
 
-      const outOfBoundsTop = parsedTop + yDelta < 0;
-      const outOfBoundsLeft = parsedLeft + xDelta < 0;
-      const outOfBoundsBottom = bottom + yDelta > availHeight;
-      const outOfBoundsRight = right + xDelta >= availWidth;
+      const outOfBoundsTop = this.y < 0;
+      const outOfBoundsLeft = this.x < 0;
+      const outOfBoundsBottom = bottom + yDelta > window.innerHeight;
+      const outOfBoundsRight = right + xDelta >= window.innerWidth;
 
       const isOutOfBounds =
         outOfBoundsBottom ||
@@ -121,37 +109,26 @@ export class DragController {
       this.cursorPositionY = cursorPositionY;
 
       // The happy path, if the draggable element doesn't attempt to go beyond the browser's boundaries
-      if (!isOutOfBounds) {
-        const top = `${parsedTop + yDelta}px`;
-        const left = `${parsedLeft + xDelta}px`;
 
-        this.updateElPosition(left, top);
-      } else {
-        // Otherwise we force the window to remain within the browser window
-        if (outOfBoundsTop) {
-          const left = `${parsedLeft + xDelta}px`;
-
-          this.updateElPosition(left, "0px");
-        } else if (outOfBoundsLeft) {
-          const top = `${parsedTop + yDelta}px`;
-
-          this.updateElPosition("0px", top);
-        } else if (outOfBoundsBottom) {
-          const top = `${availableHeight - height}px`;
-          const left = `${parsedLeft + xDelta}px`;
-
-          this.updateElPosition(left, top);
-        } else if (outOfBoundsRight) {
-          const top = `${parsedTop + yDelta}px`;
-          const left = `${Math.floor(availableWidth - width)}px`;
-
-          this.updateElPosition(left, top);
-        }
+      // Otherwise we force the window to remain within the browser window
+      if (outOfBoundsTop) {
+        this.y = 0;
+      } else if (outOfBoundsLeft) {
+        this.x = 0;
+      } else if (outOfBoundsBottom) {
+        this.y = window.innerHeight - height;
+      } else if (outOfBoundsRight) {
+        this.x = Math.floor(window.innerWidth - width);
       }
 
+      this.updateElPosition();
       // We trigger a lifecycle update
       this.host.requestUpdate();
     }
+  }
+
+  updateElPosition(x, y) {
+    this.styles.transform = `translate(${this.x}px, ${this.y}px)`;
   }
 
   #onDragStart = (pointer, ev) => {
@@ -160,20 +137,16 @@ export class DragController {
   };
 
   #onDrag = (_, pointers) => {
-    const el = this.draggableElement;
-    const containerEl = this.host.shadowRoot?.querySelector(this.containerId);
+    this.calculateWindowPosition(pointers[0]);
 
-    const event = new CustomEvent("windowDrag", {
+    const event = new CustomEvent("window-drag", {
       bubbles: true,
       composed: true,
       detail: {
-        pointer: pointers[0],
-        containerEl,
-        draggableEl: el,
+        containerEl: this.getContainerEl(),
       },
     });
 
-    this.host.dispatchEvent(event);
-    this.calculateWindowPosition(pointers[0]);
+    this.draggableEl.dispatchEvent(event);
   };
 }

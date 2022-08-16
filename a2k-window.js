@@ -48,8 +48,14 @@ class A2kWindow extends LitElement {
   };
 
   drag = new DragController(this, {
-    containerId: "#window",
+    getContainerEl: () => this.shadowRoot.querySelector("#window"),
+    getDraggableEl: () => this.getDraggableEl(),
   });
+
+  async getDraggableEl() {
+    await this.updateComplete;
+    return this.shadowRoot.querySelector("#draggable");
+  }
 
   constructor() {
     super();
@@ -61,7 +67,7 @@ class A2kWindow extends LitElement {
     return html`
       <div id="window" style=${styleMap(this.drag.styles)}>
         <div id="panel">
-          <div id="draggable" ${this.drag.applyDrag()}>
+          <div id="draggable" data-dragging=${this.drag.state}>
             <p>${this.heading}</p>
           </div>
           <slot></slot>
